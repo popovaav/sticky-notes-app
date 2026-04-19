@@ -1,14 +1,20 @@
 .board {
     position: relative;
     height: 80vh;
-    border: 1px solid #ccc;
+    border: 1px dashed #ddd;
     margin-top: 20px;
+    border-radius: 10px;
 }
 
 .note {
-    background: yellowgreen;
-    border: 1px solid #999;
+    background: #cde77f;
+    border: 1px solid #9aa76a;
     cursor: grab;
+    user-select: none;
+}
+
+.note:active {
+    cursor: grabbing;
 }
 
 button {
