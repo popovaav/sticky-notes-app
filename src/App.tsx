@@ -1,5 +1,5 @@
 import './App.css'
-import type { Note } from './types/note'
+import type { Note, Position } from './types/note'
 import { useEffect, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { clamp } from "./utils/utils.ts";
@@ -15,9 +15,10 @@ function App() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [resizingId, setResizingId] = useState<string | null>(null)
   const boardRef = useRef<HTMLDivElement | null>(null)
+  const frameRef = useRef<number | null>(null)
 
 
-  // Ensure drag/resize stops even if mouse is released outside the board
+  // Handle mouse up globally to stop drag/resize even outside the board
   useEffect(() => {
     const handleGlobalMouseUp = () => {
       setDraggingId(null)
@@ -29,6 +30,10 @@ function App() {
 
     return () => {
       window.removeEventListener('mouseup', handleGlobalMouseUp)
+
+      if (frameRef.current) {
+        cancelAnimationFrame(frameRef.current)
+      }
     }
   }, [])
 
@@ -46,10 +51,8 @@ function App() {
     setNotes(prev => [...prev, newNote])
   }
 
-  const getMousePosition = (e: MouseEvent<HTMLDivElement>) => {
-    if (!boardRef.current) return null
-
-    const rect = boardRef.current.getBoundingClientRect()
+  const getMousePosition = (e: MouseEvent<HTMLDivElement>, board: HTMLDivElement): Position => {
+    const rect = board.getBoundingClientRect()
 
     return {
       x: e.clientX - rect.left,
@@ -57,14 +60,11 @@ function App() {
     }
   }
 
-  const handleDragMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!draggingId || !boardRef.current) return
-
+  const handleDragMove = (position: Position) => {
     const board = boardRef.current
-    const pos = getMousePosition(e)
-    if (!pos) return
+    if (!draggingId || !board) return
 
-    const { x: mouseX, y: mouseY } = pos
+    const { x: mouseX, y: mouseY } = position
 
     setNotes(prev =>
       prev.map(note => {
@@ -85,14 +85,11 @@ function App() {
     )
   }
 
-  const handleResizeMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (!resizingId || !boardRef.current) return
-
+  const handleResizeMove = (position: Position) => {
     const board = boardRef.current
-    const pos = getMousePosition(e)
-    if (!pos) return
+    if (!resizingId || !board) return
 
-    const { x: mouseX, y: mouseY } = pos
+    const { x: mouseX, y: mouseY } = position
 
     setNotes(prev =>
       prev.map(note => {
@@ -114,12 +111,11 @@ function App() {
     e: MouseEvent<HTMLDivElement>,
     note: Note
   ) => {
-    if (!boardRef.current) return
+    const board = boardRef.current
+    if (!board) return
 
-    const pos = getMousePosition(e)
-    if (!pos) return
-
-    const { x: mouseX, y: mouseY } = pos
+    const position = getMousePosition(e, board)
+    const { x: mouseX, y: mouseY } = position
 
     setDraggingId(note.id)
 
@@ -136,16 +132,21 @@ function App() {
     e.stopPropagation()
     setDraggingId(null)
     setResizingId(note.id)
+    setDragOffset({ x: 0, y: 0 })
   }
 
+  // Limit state updates during drag/resize using requestAnimationFrame
   const handleMouseMove = (e: MouseEvent<HTMLDivElement>) => {
-    if (resizingId) return handleResizeMove(e)
-    if (draggingId) return handleDragMove(e)
-  }
+    const board = boardRef.current
+    if (frameRef.current || (!draggingId && !resizingId) || !board) return
 
-  const handleMouseUp = () => {
-    setDraggingId(null)
-    setResizingId(null)
+    const position = getMousePosition(e, board)
+    const moveHandler = resizingId ? handleResizeMove : handleDragMove
+
+    frameRef.current = requestAnimationFrame(() => {
+      moveHandler(position)
+      frameRef.current = null
+    })
   }
 
   return <main>
@@ -156,7 +157,6 @@ function App() {
       ref={boardRef}
       className="board"
       onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
     >
       {notes.map(note => (
         <div
